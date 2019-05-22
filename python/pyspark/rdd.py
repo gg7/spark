@@ -26,6 +26,7 @@ import heapq
 import bisect
 import random
 import socket
+import importlib
 from subprocess import Popen, PIPE
 from tempfile import NamedTemporaryFile
 from threading import Thread
@@ -2385,9 +2386,24 @@ class RDD(object):
         return _load_from_socket(sock_info, self._jrdd_deserializer)
 
 
+def _get_python_rdd_serializer():
+    """
+    Usage: export PYSPARK_RDD_SERIALIZER="pyspark.serializers.CloudPickleSerializer"
+    """
+    serializer_str = os.environ.get(
+        "PYSPARK_RDD_SERIALIZER",
+        "pyspark.serializers.CloudPickleSerializer"
+    )
+    serializer_module_str = '.'.join(serializer_str.split('.')[:-1])
+    serializer_class_str = serializer_str.split('.')[-1]
+    serializer_module = importlib.import_module(serializer_module_str)
+    ser = getattr(serializer_module, serializer_class_str)()
+    return ser
+
+
 def _prepare_for_python_RDD(sc, command):
     # the serialized command will be compressed by broadcast
-    ser = CloudPickleSerializer()
+    ser = _get_python_rdd_serializer()
     pickled_command = ser.dumps(command)
     if len(pickled_command) > (1 << 20):  # 1M
         # The broadcast will have same life cycle as created PythonRDD
